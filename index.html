@@ -53,10 +53,21 @@
       </button>
     </section>
 
+    <button id="btn-view-codes" class="btn btn-outline btn-block">📋 Ver códigos registrados</button>
+
     <section class="home-footer">
-      <button id="btn-resend-all" class="btn btn-ghost">↻ Reintentar guardado de todas las fotos</button>
-      <p class="home-note">Cada foto se guarda automáticamente en <code>Download/Fotos_Campo/…</code> al tomarla. Usa este botón solo si alguna descarga no se completó.</p>
+      <button id="btn-export-all" class="btn btn-primary btn-block">⬇ Exportar todo (Fotos_Campo.zip)</button>
+      <p class="home-note">El .zip trae la carpeta <code>Fotos_Campo</code> con subcarpetas por categoría y código, y los archivos ya renombrados como <code>codigo_01.jpg</code>, <code>codigo_02.jpg</code>… Descomprímelo con tu explorador de archivos donde quieras guardarlo.</p>
     </section>
+  </main>
+
+  <!-- ============ CÓDIGOS ============ -->
+  <main id="view-codes" class="view hidden">
+    <header class="cat-header">
+      <button id="btn-codes-back" class="btn-icon" aria-label="Volver">←</button>
+      <h2>Códigos registrados</h2>
+    </header>
+    <div id="codes-list-container"></div>
   </main>
 
   <!-- ============ CATEGORÍA ============ -->
@@ -84,6 +95,7 @@
         <span id="gallery-title">Fotos de este código</span>
         <span id="gallery-count" class="gallery-count">0</span>
       </div>
+      <button id="btn-export-codigo" class="btn btn-outline btn-small btn-export-codigo">⬇ Exportar este código (.zip)</button>
       <div id="gallery-grid" class="gallery-grid"></div>
       <p id="gallery-empty" class="gallery-empty">Aún no hay fotos con este código. Toma la primera.</p>
     </section>
@@ -115,7 +127,7 @@
   <div class="lightbox-footer">
     <span id="lightbox-filename" class="lightbox-filename"></span>
     <div class="lightbox-actions">
-      <button id="lightbox-resend" class="btn btn-outline btn-small">↻ reintentar guardado</button>
+      <button id="lightbox-download" class="btn btn-outline btn-small">⬇ descargar</button>
       <button id="lightbox-delete" class="btn btn-danger btn-small">eliminar</button>
     </div>
   </div>
@@ -123,6 +135,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

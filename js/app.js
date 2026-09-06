@@ -2,18 +2,23 @@
    Fotos de Campo — PWA
    Reconstrucción de foto_campo.py (Termux) para navegador / Android.
 
-   Estructura que se guarda en el dispositivo (dentro de Download/):
-     Fotos_Campo/<tipo>/<codigo>/<codigo>_<NN>.<ext>
-
-   Cada foto también queda copiada en IndexedDB para poder:
-     - mostrar la galería dentro de la app,
-     - calcular el siguiente número correlativo (como siguiente_numero()),
-     - reintentar la descarga si el navegador la bloqueó.
+   Cada foto se guarda primero en IndexedDB (galería, numeración correlativa
+   igual a siguiente_numero()). La organización real en carpetas del
+   dispositivo ocurre al exportar: se genera un .zip con la estructura
+     Fotos_Campo/<Categoría>/<código>/<código>_<NN>.<ext>
+   que el usuario descomprime con su explorador de archivos. Esto es más
+   confiable que intentar que el navegador cree subcarpetas al descargar
+   cada foto por separado.
    ====================================================================== */
 
 const BASE_DIR = "Fotos_Campo";
 const TIPOS = {
   Muestras_Roca: "Muestras de roca",
+  Afloramientos: "Afloramientos",
+};
+// Nombres de carpeta dentro del zip (legibles, con may/min consistente)
+const TIPO_FOLDER = {
+  Muestras_Roca: "Muestras de Roca",
   Afloramientos: "Afloramientos",
 };
 
@@ -72,22 +77,6 @@ async function dbAddPhoto(record) {
     const req = store.add(record);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
-  });
-}
-
-async function dbUpdatePhoto(id, changes) {
-  const store = await tx("photos", "readwrite");
-  return new Promise((resolve, reject) => {
-    const getReq = store.get(id);
-    getReq.onsuccess = () => {
-      const rec = getReq.result;
-      if (!rec) return resolve();
-      Object.assign(rec, changes);
-      const putReq = store.put(rec);
-      putReq.onsuccess = () => resolve();
-      putReq.onerror = () => reject(putReq.error);
-    };
-    getReq.onerror = () => reject(getReq.error);
   });
 }
 
@@ -165,19 +154,6 @@ function showToast(msg, ms = 2600) {
   showToast._t = setTimeout(() => el.classList.add("hidden"), ms);
 }
 
-/** Dispara la descarga del navegador con una ruta anidada, para que Chrome
- *  en Android la ubique en Download/Fotos_Campo/<tipo>/<codigo>/archivo */
-function descargarArchivo(blob, tipo, codigo, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${BASE_DIR}/${tipo}/${codigo}/${filename}`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
-
 /* ------------------------------ Vistas ------------------------------ */
 
 const viewHome = document.getElementById("view-home");
@@ -251,14 +227,6 @@ async function renderCategory() {
     badge.className = "thumb-badge";
     badge.textContent = pad2(foto.numero);
     thumb.appendChild(badge);
-
-    if (!foto.downloaded) {
-      const pending = document.createElement("span");
-      pending.className = "thumb-pending";
-      pending.textContent = "!";
-      pending.title = "No se confirmó la descarga";
-      thumb.appendChild(pending);
-    }
 
     thumb.addEventListener("click", () => openLightbox(foto));
     grid.appendChild(thumb);
@@ -352,7 +320,7 @@ cameraInput.addEventListener("change", async () => {
   const ext = extFromFile(file);
   const filename = `${codigo}_${pad2(numero)}${ext}`;
 
-  const id = await dbAddPhoto({
+  await dbAddPhoto({
     tipo,
     codigo,
     numero,
@@ -360,18 +328,11 @@ cameraInput.addEventListener("change", async () => {
     blob: file,
     mime: file.type || "image/jpeg",
     createdAt: Date.now(),
-    downloaded: false,
   });
 
-  try {
-    descargarArchivo(file, tipo, codigo, filename);
-    await dbUpdatePhoto(id, { downloaded: true });
-    showToast(`✅ Foto guardada como ${filename}`);
-  } catch (err) {
-    showToast(`No se pudo guardar automáticamente. Usa "reintentar guardado".`);
-  }
-
+  showToast(`📸 Guardada como ${filename}. No olvides exportar para copiarla a tu almacenamiento.`);
   renderCategory();
+  refreshHomeCounts();
 });
 
 /* ------------------------------ Lightbox ------------------------------ */
@@ -384,7 +345,7 @@ let lightboxPhoto = null;
 function openLightbox(foto) {
   lightboxPhoto = foto;
   lightboxImg.src = URL.createObjectURL(foto.blob);
-  lightboxFilename.textContent = `${BASE_DIR}/${foto.tipo}/${foto.codigo}/${foto.filename}`;
+  lightboxFilename.textContent = `${BASE_DIR}/${TIPO_FOLDER[foto.tipo] || foto.tipo}/${foto.codigo}/${foto.filename}`;
   lightbox.classList.remove("hidden");
 }
 
@@ -393,12 +354,17 @@ document.getElementById("lightbox-close").addEventListener("click", () => {
   lightboxPhoto = null;
 });
 
-document.getElementById("lightbox-resend").addEventListener("click", async () => {
+document.getElementById("lightbox-download").addEventListener("click", () => {
   if (!lightboxPhoto) return;
-  descargarArchivo(lightboxPhoto.blob, lightboxPhoto.tipo, lightboxPhoto.codigo, lightboxPhoto.filename);
-  await dbUpdatePhoto(lightboxPhoto.id, { downloaded: true });
-  showToast("↻ Descarga reintentada.");
-  renderCategory();
+  const url = URL.createObjectURL(lightboxPhoto.blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = lightboxPhoto.filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  showToast(`⬇ ${lightboxPhoto.filename} descargada (archivo suelto).`);
 });
 
 document.getElementById("lightbox-delete").addEventListener("click", async () => {
@@ -422,24 +388,146 @@ document.getElementById("btn-change-code").addEventListener("click", () => {
   openCodeModal({ tipo: state.tipo, mode: "cambiar" });
 });
 
-/* ------------------------------ Reintentar todas ------------------------------ */
+/* ------------------------------ Exportar a .zip ------------------------------ */
 
-document.getElementById("btn-resend-all").addEventListener("click", async () => {
-  const fotos = await dbGetAllPhotos();
-  if (fotos.length === 0) {
-    showToast("No hay fotos registradas todavía.");
+function timestamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+/** Arma un zip con la estructura Fotos_Campo/<Categoría>/<código>/<código_NN.ext>
+ *  a partir de una lista de registros de foto, y dispara su descarga. */
+async function exportarZip(fotos, nombreZip) {
+  if (!fotos.length) {
+    showToast("No hay fotos para exportar.");
     return;
   }
-  showToast(`Reenviando ${fotos.length} foto(s)… si el navegador pregunta, permite las descargas múltiples.`, 4000);
-  let i = 0;
-  for (const foto of fotos) {
-    descargarArchivo(foto.blob, foto.tipo, foto.codigo, foto.filename);
-    await dbUpdatePhoto(foto.id, { downloaded: true });
-    i++;
-    await new Promise((r) => setTimeout(r, 350));
+  if (typeof JSZip === "undefined") {
+    showToast("No se pudo cargar el compresor (revisa tu conexión) e inténtalo de nuevo.");
+    return;
   }
-  showToast(`✅ ${i} foto(s) reenviadas.`);
-  refreshHomeCounts();
+  showToast(`Generando ${nombreZip}… (${fotos.length} foto${fotos.length === 1 ? "" : "s"})`, 5000);
+
+  const zip = new JSZip();
+  const root = zip.folder(BASE_DIR);
+  for (const foto of fotos) {
+    const carpetaTipo = root.folder(TIPO_FOLDER[foto.tipo] || foto.tipo);
+    const carpetaCodigo = carpetaTipo.folder(foto.codigo);
+    carpetaCodigo.file(foto.filename, foto.blob);
+  }
+
+  try {
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nombreZip;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 6000);
+    showToast(`✅ ${nombreZip} descargado. Descomprímelo con tu explorador de archivos.`, 4500);
+  } catch (err) {
+    showToast("No se pudo generar el zip. Intenta con menos fotos a la vez.");
+  }
+}
+
+document.getElementById("btn-export-all").addEventListener("click", async () => {
+  const fotos = await dbGetAllPhotos();
+  exportarZip(fotos, `${BASE_DIR}_${timestamp()}.zip`);
+});
+
+document.getElementById("btn-export-codigo").addEventListener("click", async () => {
+  if (!state.tipo || !state.codigo) return;
+  const fotos = await dbGetPhotosByTipoCodigo(state.tipo, state.codigo);
+  exportarZip(fotos, `${BASE_DIR}_${state.codigo}_${timestamp()}.zip`);
+});
+
+/* ------------------------------ Vista: Códigos registrados ------------------------------ */
+
+const viewCodes = document.getElementById("view-codes");
+
+async function dbGetCodigosConDatos(tipo) {
+  const fotos = await dbGetPhotosByTipo(tipo);
+  const map = new Map();
+  for (const f of fotos) {
+    if (!map.has(f.codigo)) map.set(f.codigo, { codigo: f.codigo, count: 0, lastCreated: 0, firstBlob: null });
+    const entry = map.get(f.codigo);
+    entry.count += 1;
+    if (f.createdAt > entry.lastCreated) entry.lastCreated = f.createdAt;
+    if (!entry.firstBlob || f.numero === 1) entry.firstBlob = f.blob;
+  }
+  return [...map.values()].sort((a, b) => b.lastCreated - a.lastCreated);
+}
+
+async function renderCodesView() {
+  const container = document.getElementById("codes-list-container");
+  container.innerHTML = "";
+
+  for (const tipo of Object.keys(TIPOS)) {
+    const section = document.createElement("section");
+    section.className = `codes-section codes-section--${tipo === "Muestras_Roca" ? "rock" : "outcrop"}`;
+
+    const title = document.createElement("div");
+    title.className = "codes-section-title";
+    title.innerHTML = `<span class="dot"></span> ${TIPOS[tipo]}`;
+    section.appendChild(title);
+
+    const codigos = await dbGetCodigosConDatos(tipo);
+
+    if (codigos.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "codes-empty";
+      empty.textContent = "Todavía no hay códigos con fotos.";
+      section.appendChild(empty);
+    } else {
+      for (const entry of codigos) {
+        const row = document.createElement("button");
+        row.className = "code-row-item";
+        row.type = "button";
+
+        const img = document.createElement("img");
+        img.className = "code-row-thumb";
+        if (entry.firstBlob) img.src = URL.createObjectURL(entry.firstBlob);
+        row.appendChild(img);
+
+        const text = document.createElement("span");
+        text.className = "code-row-text";
+        text.innerHTML = `
+          <span class="code-row-name">${entry.codigo}</span>
+          <span class="code-row-count">${entry.count} foto${entry.count === 1 ? "" : "s"}</span>
+        `;
+        row.appendChild(text);
+
+        row.addEventListener("click", async () => {
+          state.tipo = tipo;
+          state.codigo = entry.codigo;
+          await dbSetSetting(tipo, entry.codigo);
+          viewCodes.classList.add("hidden");
+          viewCategory.classList.remove("hidden");
+          viewCategory.dataset.tipo = tipo;
+          document.getElementById("cat-title").textContent = TIPOS[tipo];
+          renderCategory();
+        });
+
+        section.appendChild(row);
+      }
+    }
+
+    container.appendChild(section);
+  }
+}
+
+document.getElementById("btn-view-codes").addEventListener("click", () => {
+  viewHome.classList.add("hidden");
+  viewCodes.classList.remove("hidden");
+  renderCodesView();
+});
+
+document.getElementById("btn-codes-back").addEventListener("click", () => {
+  viewCodes.classList.add("hidden");
+  showHome();
 });
 
 /* ------------------------------ Arranque ------------------------------ */
