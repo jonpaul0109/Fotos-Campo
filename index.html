@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fotos de Campo</title>
+<meta name="description" content="Registro fotográfico de muestras de roca y afloramientos">
+<meta name="theme-color" content="#21282A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <main id="view-home" class="view">
+    <header class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="34" height="34">
+          <polygon points="4,50 24,18 34,32 42,22 60,50" fill="var(--outcrop)"/>
+          <ellipse cx="20" cy="47" rx="9" ry="6.5" fill="var(--rock)"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Fotos de Campo</h1>
+        <p class="brand-sub">Registro fotográfico de muestras y afloramientos</p>
+      </div>
+    </header>
+
+    <section class="category-list" aria-label="Categorías">
+      <button class="cat-tag cat-tag--rock" data-tipo="Muestras_Roca">
+        <span class="cat-tag-icon" aria-hidden="true">🪨</span>
+        <span class="cat-tag-text">
+          <span class="cat-tag-title">Muestras de roca</span>
+          <span class="cat-tag-count" id="count-Muestras_Roca">— sin registros aún</span>
+        </span>
+        <span class="cat-tag-arrow" aria-hidden="true">›</span>
+      </button>
+
+      <button class="cat-tag cat-tag--outcrop" data-tipo="Afloramientos">
+        <span class="cat-tag-icon" aria-hidden="true">🏔️</span>
+        <span class="cat-tag-text">
+          <span class="cat-tag-title">Afloramientos</span>
+          <span class="cat-tag-count" id="count-Afloramientos">— sin registros aún</span>
+        </span>
+        <span class="cat-tag-arrow" aria-hidden="true">›</span>
+      </button>
+    </section>
+
+    <section class="home-footer">
+      <button id="btn-resend-all" class="btn btn-ghost">↻ Reintentar guardado de todas las fotos</button>
+      <p class="home-note">Cada foto se guarda automáticamente en <code>Download/Fotos_Campo/…</code> al tomarla. Usa este botón solo si alguna descarga no se completó.</p>
+    </section>
+  </main>
+
+  <!-- ============ CATEGORÍA ============ -->
+  <main id="view-category" class="view hidden">
+    <header class="cat-header">
+      <button id="btn-back" class="btn-icon" aria-label="Volver">←</button>
+      <h2 id="cat-title">—</h2>
+    </header>
+
+    <section class="code-panel">
+      <span class="code-label">Código actual</span>
+      <div class="code-row">
+        <span id="code-value" class="code-chip">—</span>
+        <button id="btn-change-code" class="btn btn-outline btn-small">cambiar</button>
+      </div>
+    </section>
+
+    <button id="btn-capture" class="btn-capture">
+      <span class="btn-capture-icon" aria-hidden="true">📷</span>
+      <span>Tomar fotografía</span>
+    </button>
+
+    <section class="gallery-section">
+      <div class="gallery-header">
+        <span id="gallery-title">Fotos de este código</span>
+        <span id="gallery-count" class="gallery-count">0</span>
+      </div>
+      <div id="gallery-grid" class="gallery-grid"></div>
+      <p id="gallery-empty" class="gallery-empty">Aún no hay fotos con este código. Toma la primera.</p>
+    </section>
+  </main>
+
+</div>
+
+<!-- input oculto que abre la cámara nativa -->
+<input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
+
+<!-- modal para ingresar/cambiar código -->
+<div id="modal-code" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3 id="modal-code-title">Ingresa el código</h3>
+    <input type="text" id="modal-code-input" class="modal-input" placeholder="Ej. MR-014" autocomplete="off">
+    <p id="modal-code-error" class="modal-error hidden">El código no puede estar vacío.</p>
+    <div id="modal-code-suggestions" class="code-suggestions"></div>
+    <div class="modal-actions">
+      <button id="modal-code-cancel" class="btn btn-ghost">Cancelar</button>
+      <button id="modal-code-confirm" class="btn btn-primary">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- lightbox de foto -->
+<div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true">
+  <button id="lightbox-close" class="btn-icon lightbox-close" aria-label="Cerrar">✕</button>
+  <img id="lightbox-img" alt="">
+  <div class="lightbox-footer">
+    <span id="lightbox-filename" class="lightbox-filename"></span>
+    <div class="lightbox-actions">
+      <button id="lightbox-resend" class="btn btn-outline btn-small">↻ reintentar guardado</button>
+      <button id="lightbox-delete" class="btn btn-danger btn-small">eliminar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
