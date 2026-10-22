@@ -118,6 +118,48 @@ async function dbGetAllPhotos() {
   });
 }
 
+/** Marca como exportados los ids dados (se llama tras generar un .zip con éxito) */
+async function dbMarkExported(ids) {
+  const idSet = new Set(ids);
+  const store = await tx("photos", "readwrite");
+  return new Promise((resolve, reject) => {
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return resolve();
+      if (idSet.has(cursor.value.id)) {
+        const rec = cursor.value;
+        rec.exported = true;
+        cursor.update(rec);
+      }
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** true si hay al menos una foto y TODAS están marcadas como exportadas */
+async function dbTodoExportado() {
+  const fotos = await dbGetAllPhotos();
+  if (fotos.length === 0) return false;
+  return fotos.every((f) => f.exported === true);
+}
+
+/** Borra toda la base local (fotos y configuración de códigos) */
+async function dbClearAll() {
+  const db = await openDB();
+  await Promise.all(
+    ["photos", "settings"].map(
+      (name) =>
+        new Promise((resolve, reject) => {
+          const req = db.transaction(name, "readwrite").objectStore(name).clear();
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        })
+    )
+  );
+}
+
 /* ------------------------------ Estado ------------------------------ */
 
 const state = {
@@ -165,6 +207,7 @@ function showHome() {
   viewCategory.classList.add("hidden");
   viewHome.classList.remove("hidden");
   refreshHomeCounts();
+  refreshClearButtonState();
 }
 
 async function refreshHomeCounts() {
@@ -328,11 +371,13 @@ cameraInput.addEventListener("change", async () => {
     blob: file,
     mime: file.type || "image/jpeg",
     createdAt: Date.now(),
+    exported: false,
   });
 
   showToast(`📸 Guardada como ${filename}. No olvides exportar para copiarla a tu almacenamiento.`);
   renderCategory();
   refreshHomeCounts();
+  refreshClearButtonState();
 });
 
 /* ------------------------------ Lightbox ------------------------------ */
@@ -374,6 +419,7 @@ document.getElementById("lightbox-delete").addEventListener("click", async () =>
   lightbox.classList.add("hidden");
   lightboxPhoto = null;
   renderCategory();
+  refreshClearButtonState();
 });
 
 /* ------------------------------ Navegación ------------------------------ */
@@ -427,7 +473,9 @@ async function exportarZip(fotos, nombreZip) {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 6000);
+    await dbMarkExported(fotos.map((f) => f.id));
     showToast(`✅ ${nombreZip} descargado. Descomprímelo con tu explorador de archivos.`, 4500);
+    refreshClearButtonState();
   } catch (err) {
     showToast("No se pudo generar el zip. Intenta con menos fotos a la vez.");
   }
@@ -442,6 +490,42 @@ document.getElementById("btn-export-codigo").addEventListener("click", async () 
   if (!state.tipo || !state.codigo) return;
   const fotos = await dbGetPhotosByTipoCodigo(state.tipo, state.codigo);
   exportarZip(fotos, `${BASE_DIR}_${state.codigo}_${timestamp()}.zip`);
+});
+
+/* ------------------------------ Eliminar todos los datos ------------------------------ */
+
+const btnClearAll = document.getElementById("btn-clear-all");
+const clearAllHint = document.getElementById("clear-all-hint");
+
+/** Habilita el botón solo si hay fotos y todas ya fueron exportadas al menos una vez. */
+async function refreshClearButtonState() {
+  const fotos = await dbGetAllPhotos();
+  const todoExportado = fotos.length > 0 && fotos.every((f) => f.exported === true);
+
+  btnClearAll.disabled = !todoExportado;
+
+  if (fotos.length === 0) {
+    clearAllHint.textContent = "Aún no hay fotos registradas.";
+  } else if (todoExportado) {
+    clearAllHint.textContent = `Las ${fotos.length} foto${fotos.length === 1 ? "" : "s"} guardadas ya están exportadas. Puedes borrar los datos de la app con confianza.`;
+  } else {
+    const pendientes = fotos.filter((f) => !f.exported).length;
+    clearAllHint.textContent = `Faltan ${pendientes} foto${pendientes === 1 ? "" : "s"} por exportar. Usa "Exportar todo" para habilitar este botón.`;
+  }
+}
+
+btnClearAll.addEventListener("click", async () => {
+  if (btnClearAll.disabled) return;
+  const ok = confirm(
+    "¿Eliminar TODAS las fotos y códigos guardados en esta app?\n\nYa las exportaste a .zip, pero esta acción no se puede deshacer dentro de la app. Los archivos que ya descargaste no se tocan."
+  );
+  if (!ok) return;
+
+  await dbClearAll();
+  state.tipo = null;
+  state.codigo = null;
+  showToast("🗑 Datos eliminados de la app.");
+  showHome();
 });
 
 /* ------------------------------ Vista: Códigos registrados ------------------------------ */

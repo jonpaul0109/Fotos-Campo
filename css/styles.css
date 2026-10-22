@@ -154,6 +154,26 @@ h1,h2,h3{ font-family: var(--font-display); margin:0; }
 .btn-danger{ background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn-block{ width:100%; padding: 13px 16px; }
 
+.danger-zone{
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1.5px dashed var(--line);
+}
+.btn-danger-block{
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 500;
+}
+.btn-danger-block:disabled{
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink-faint);
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+.btn-danger-block:not(:disabled):active{ transform: translateY(1px); }
+
 .btn-export-codigo{
   display:block;
   width: fit-content;
